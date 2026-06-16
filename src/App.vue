@@ -632,7 +632,44 @@ export default {
       return new Date(ts).toLocaleDateString()
     },
     exportSession() {
-      // implemented in Task 9
+      const s = sessionStore.getActive()
+      if (!s || s.messages.length === 0) return
+      let md = `# ${s.title}\n\n`
+      for (const m of s.messages) {
+        if (m.role === 'user') {
+          md += `## 提问\n\n${m.content}\n\n`
+        } else {
+          md += `### 回答\n\n${m.content}\n\n`
+        }
+      }
+      const blob = new Blob([md], { type: 'text/markdown;charset=utf-8' })
+      const url = URL.createObjectURL(blob)
+      const a = document.createElement('a')
+      a.href = url
+      a.download = `${s.title || '会话'}.md`
+      document.body.appendChild(a)
+      a.click()
+      document.body.removeChild(a)
+      URL.revokeObjectURL(url)
+    },
+    async copyAnswer(msg) {
+      const text = msg.content || ''
+      try {
+        await navigator.clipboard.writeText(text)
+      } catch {
+        // fallback for non-HTTPS / no permission
+        const ta = document.createElement('textarea')
+        ta.value = text
+        ta.style.position = 'fixed'
+        ta.style.opacity = '0'
+        document.body.appendChild(ta)
+        ta.select()
+        try { document.execCommand('copy') } catch {}
+        document.body.removeChild(ta)
+      }
+      this.copiedMsgId = msg.id
+      clearTimeout(this._copyTimer)
+      this._copyTimer = setTimeout(() => { this.copiedMsgId = null }, 1200)
     },
   }
 }
