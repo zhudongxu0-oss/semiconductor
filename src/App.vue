@@ -400,15 +400,20 @@ export default {
 
         const reader = response.body.getReader()
         const decoder = new TextDecoder()
+        let buffer = ''
 
         while (true) {
           const { done, value } = await reader.read()
           if (done) break
 
-          const text = decoder.decode(value)
-          const lines = text.split('\n').filter((l) => l.startsWith('data: '))
+          // Carry the incomplete tail across read boundaries so a `data:` line
+          // split by TCP framing isn't lost. {stream:true} also handles multi-byte chars.
+          buffer += decoder.decode(value, { stream: true })
+          const lines = buffer.split('\n')
+          buffer = lines.pop()       // keep the last (possibly partial) line
 
           for (const line of lines) {
+            if (!line.startsWith('data: ')) continue
             try {
               const data = JSON.parse(line.slice(6))
 
@@ -437,7 +442,7 @@ export default {
                 sessionStore.saveNow()
               }
             } catch (e) {
-              // partial SSE line across chunks — ignore; next read retries
+              // ignore a malformed line
             }
           }
         }
@@ -456,6 +461,7 @@ export default {
         this.loading = false
         this.currentAbort = null
         this.$nextTick(() => this.scrollToBottom())
+        this.$refs.inputRef?.focus()
       }
     },
     scrollToBottom() {
