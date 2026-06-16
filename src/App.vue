@@ -248,8 +248,8 @@
                       <span v-if="copiedMsgId === msg.id" class="copy-ok">✓ 已复制</span>
                       <template v-else>复制</template>
                     </button>
-                    <span class="action-sep">·</span>
-                    <button class="action-link" @click="regenerate">重新生成</button>
+                    <span v-if="i === lastAssistantIndex" class="action-sep">·</span>
+                    <button v-if="i === lastAssistantIndex" class="action-link" @click="regenerate">重新生成</button>
                   </div>
                 </div>
                 <div v-else class="question-content">{{ msg.content }}</div>
@@ -387,6 +387,12 @@ export default {
     canRegenerate() {
       const m = this.messages
       return m.length > 0 && m[m.length - 1].role === 'assistant'
+    },
+    lastAssistantIndex() {
+      for (let i = this.messages.length - 1; i >= 0; i--) {
+        if (this.messages[i].role === 'assistant') return i
+      }
+      return -1
     },
   },
   mounted() {
