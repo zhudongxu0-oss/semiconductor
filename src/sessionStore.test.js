@@ -112,8 +112,10 @@ test('ensureActive creates one when none active', () => {
 })
 
 test('makeTitle truncates to 15 chars and falls back', () => {
-  assert.equal(store.makeTitle('RTP的升温速率怎么设定？详细说明'), 'RTP的升温速率怎么设定？详细'.slice(0, 15))
+  assert.equal(store.makeTitle('RTP的升温速率怎么设定？详细说明'), 'RTP的升温速率怎么设定？详细')
   assert.equal(store.makeTitle('短问题'), '短问题')
   assert.equal(store.makeTitle('   '), '新对话')
   assert.equal(store.makeTitle(''), '新对话')
+  // surrogate-pair safe: each emoji is one code point, not split mid-pair
+  assert.equal(store.makeTitle('😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀extra'), '😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀')
 })

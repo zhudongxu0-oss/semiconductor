@@ -19,6 +19,10 @@ function persist() {
   }
 }
 
+/**
+ * Debounced persist (~500ms). Use for high-frequency updates (e.g. per-token
+ * streaming writes). For discrete user actions, use `saveNow()` instead.
+ */
 function save() {
   clearTimeout(saveTimer)
   saveTimer = setTimeout(persist, 500)   // debounce: avoid writing per token
@@ -57,7 +61,9 @@ function genId(prefix = 's') {
 
 function makeTitle(q) {
   const t = (q || '').trim()
-  return t ? t.slice(0, 15) : '新对话'
+  if (!t) return '新对话'
+  // Array.from iterates by code point so surrogate pairs (emoji etc.) aren't split.
+  return Array.from(t).slice(0, 15).join('')
 }
 
 function createSession(title = '新对话') {
