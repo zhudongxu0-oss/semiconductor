@@ -3,6 +3,11 @@
     <!-- Header -->
     <header class="app-header" :class="{ scrolled: isScrolled }">
       <div class="header-left">
+        <button class="drawer-toggle" @click="toggleDrawer" title="会话记录">
+          <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.6">
+            <path d="M3.75 6.75h16.5M3.75 12h16.5M3.75 17.25h16.5"/>
+          </svg>
+        </button>
         <div class="logo-group">
           <div class="logo-chip">
             <svg class="chip-svg" viewBox="0 0 48 48" fill="none">
@@ -43,6 +48,74 @@
         <span class="status-text">ONLINE</span>
       </div>
     </header>
+
+    <!-- Session drawer -->
+    <transition name="drawer">
+      <div v-if="drawerOpen" class="drawer-scrim" @click="closeDrawer">
+        <aside class="session-drawer" @click.stop>
+          <div class="drawer-head">
+            <span class="drawer-title">会话记录</span>
+            <button class="drawer-new" @click="startNewChat">
+              <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M12 4.5v15m7.5-7.5h-15"/></svg>
+              新对话
+            </button>
+          </div>
+
+          <div class="drawer-list">
+            <div
+              v-for="s in sessions"
+              :key="s.id"
+              :class="['session-row', { active: s.id === activeSession?.id }]"
+              @click="editingId === s.id ? null : switchSession(s.id)"
+            >
+              <span class="session-node"></span>
+              <div class="session-main">
+                <input
+                  v-if="editingId === s.id"
+                  v-model="editingTitle"
+                  class="session-rename-input"
+                  @keyup.enter="commitRename"
+                  @keyup.esc="cancelRename"
+                  @blur="commitRename"
+                  ref="renameInput"
+                />
+                <span v-else class="session-name">{{ s.title }}</span>
+                <span class="session-time">{{ formatRelativeTime(s.updatedAt) }}</span>
+              </div>
+              <div class="session-actions" v-if="editingId !== s.id">
+                <button class="icon-btn" title="重命名" @click.stop="startRename(s)">
+                  <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.5"><path d="M16.86 4.49l2.65 2.65M3 21l.7-3.5 11.7-11.7 2.8 2.8L6.5 20.3 3 21z"/></svg>
+                </button>
+                <button class="icon-btn danger" title="删除" @click.stop="requestDelete(s.id)">
+                  <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.5"><path d="M6 7h12M9 7V4h6v3m-7 0l1 13h6l1-13"/></svg>
+                </button>
+              </div>
+            </div>
+            <div v-if="sessions.length === 0" class="drawer-empty">暂无会话</div>
+          </div>
+
+          <div class="drawer-foot">
+            <button class="drawer-export" @click="exportSession" :disabled="!messages.length">
+              <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.5"><path d="M12 3v12m0 0l-4-4m4 4l4-4M5 21h14"/></svg>
+              导出当前会话
+            </button>
+          </div>
+        </aside>
+      </div>
+    </transition>
+
+    <!-- Delete confirm -->
+    <transition name="fade">
+      <div v-if="confirmDeleteId != null" class="modal-scrim" @click="cancelDelete">
+        <div class="modal-box" @click.stop>
+          <p class="modal-text">确定删除该会话？此操作不可撤销。</p>
+          <div class="modal-actions">
+            <button class="modal-btn ghost" @click="cancelDelete">取消</button>
+            <button class="modal-btn danger" @click="confirmDelete">删除</button>
+          </div>
+        </div>
+      </div>
+    </transition>
 
     <!-- Main Content -->
     <main class="app-main">
@@ -315,6 +388,17 @@ export default {
     window.removeEventListener('scroll', this.handleScroll)
     window.removeEventListener('mousemove', this.handleEyeFollow)
   },
+  watch: {
+    editingId(id) {
+      if (id != null) {
+        this.$nextTick(() => {
+          const inputs = this.$refs.renameInput
+          const el = Array.isArray(inputs) ? inputs[0] : inputs
+          if (el && el.focus) el.focus()
+        })
+      }
+    },
+  },
   methods: {
     handleScroll() {
       this.isScrolled = window.scrollY > 10
@@ -489,7 +573,67 @@ export default {
       if (!userQ) return
       sessionStore.removeMessage(ai.id)
       this._runCompletion(userQ, ai.isDeepThink ?? this.deepThink)
-    }
+    },
+    toggleDrawer() {
+      this.drawerOpen = !this.drawerOpen
+    },
+    closeDrawer() {
+      this.drawerOpen = false
+    },
+    startNewChat() {
+      sessionStore.createSession()
+      this.drawerOpen = false
+      this.inputMessage = ''
+    },
+    switchSession(id) {
+      sessionStore.setActive(id)
+      this.drawerOpen = false
+      this.$nextTick(() => this.scrollToBottom())
+    },
+    startRename(s) {
+      this.editingId = s.id
+      this.editingTitle = s.title
+    },
+    commitRename() {
+      if (this.editingId != null) {
+        const t = (this.editingTitle || '').trim() || '新对话'
+        sessionStore.renameSession(this.editingId, t)
+      }
+      this.editingId = null
+      this.editingTitle = ''
+    },
+    cancelRename() {
+      this.editingId = null
+      this.editingTitle = ''
+    },
+    requestDelete(id) {
+      this.confirmDeleteId = id
+    },
+    confirmDelete() {
+      if (this.confirmDeleteId != null) {
+        sessionStore.deleteSession(this.confirmDeleteId)
+      }
+      this.confirmDeleteId = null
+    },
+    cancelDelete() {
+      this.confirmDeleteId = null
+    },
+    formatRelativeTime(ts) {
+      if (!ts) return ''
+      const diff = Date.now() - ts
+      const min = Math.floor(diff / 60000)
+      if (min < 1) return 'JUST NOW'
+      if (min < 60) return min + 'M AGO'
+      const hr = Math.floor(min / 60)
+      if (hr < 24) return hr + 'H AGO'
+      const day = Math.floor(hr / 24)
+      if (day === 1) return 'YESTERDAY'
+      if (day < 7) return day + 'D AGO'
+      return new Date(ts).toLocaleDateString()
+    },
+    exportSession() {
+      // implemented in Task 9
+    },
   }
 }
 </script>
@@ -636,6 +780,129 @@ export default {
   flex-direction: column;
   height: calc(100vh - 112px);
 }
+
+/* ===== Session Drawer ===== */
+.drawer-toggle {
+  display: flex; align-items: center; justify-content: center;
+  width: 38px; height: 38px;
+  background: transparent; border: 1px solid var(--border);
+  border-radius: 10px; color: var(--text-secondary);
+  cursor: none; transition: all 0.25s ease; margin-right: 12px;
+}
+.drawer-toggle:hover { border-color: var(--accent); color: var(--accent); background: var(--accent-dim); }
+.drawer-toggle svg { width: 18px; height: 18px; }
+
+.drawer-scrim {
+  position: fixed; inset: 0; z-index: 200;
+  background: rgba(0, 0, 0, 0.5); backdrop-filter: blur(2px);
+}
+.session-drawer {
+  position: absolute; top: 0; left: 0; bottom: 0;
+  width: 300px; max-width: 85vw;
+  background: rgba(3, 7, 16, 0.85); backdrop-filter: blur(20px);
+  border-right: 1px solid var(--border);
+  display: flex; flex-direction: column;
+  background-image: repeating-linear-gradient(0deg, rgba(0,229,195,0.03) 0px, rgba(0,229,195,0.03) 1px, transparent 1px, transparent 24px);
+}
+.drawer-head {
+  display: flex; align-items: center; justify-content: space-between;
+  padding: 18px 18px 12px;
+  border-bottom: 1px solid rgba(0, 229, 195, 0.15);
+}
+.drawer-title {
+  font-family: var(--font-display); font-size: 13px; font-weight: 600;
+  letter-spacing: 0.12em; text-transform: uppercase; color: var(--text-primary);
+}
+.drawer-new {
+  display: inline-flex; align-items: center; gap: 5px;
+  padding: 6px 12px; border: 1px solid var(--accent); border-radius: 16px;
+  background: transparent; color: var(--accent); font-size: 12px;
+  cursor: none; transition: all 0.25s ease;
+}
+.drawer-new:hover { background: var(--accent-dim); }
+.drawer-new svg { width: 13px; height: 13px; }
+
+.drawer-list { flex: 1; overflow-y: auto; padding: 8px; }
+.session-row {
+  display: flex; align-items: center; gap: 10px;
+  padding: 10px 10px; border-radius: 8px; cursor: none;
+  transition: all 0.2s ease; position: relative;
+}
+.session-row:hover { background: var(--accent-dim); transform: translateX(2px); }
+.session-row.active { background: var(--accent-dim); }
+.session-row.active::before {
+  content: ''; position: absolute; left: 0; top: 8px; bottom: 8px; width: 2px;
+  background: var(--accent); border-radius: 2px; box-shadow: 0 0 8px var(--accent-glow);
+}
+.session-node {
+  width: 7px; height: 7px; border-radius: 50%; flex-shrink: 0;
+  background: var(--text-muted);
+}
+.session-row.active .session-node { background: var(--accent); box-shadow: 0 0 8px var(--accent-glow); }
+.session-main { flex: 1; min-width: 0; display: flex; flex-direction: column; gap: 2px; }
+.session-name {
+  font-size: 13px; color: var(--text-primary);
+  white-space: nowrap; overflow: hidden; text-overflow: ellipsis;
+}
+.session-row.active .session-name { color: var(--accent); }
+.session-time {
+  font-family: var(--font-mono); font-size: 9px; letter-spacing: 0.1em;
+  color: var(--text-muted); text-transform: uppercase;
+}
+.session-rename-input {
+  background: rgba(0, 0, 0, 0.4); border: 1px solid var(--accent);
+  border-radius: 4px; padding: 2px 6px; color: var(--accent);
+  font-family: var(--font-mono); font-size: 13px; outline: none; width: 100%;
+}
+.session-actions { display: flex; gap: 2px; opacity: 0; transition: opacity 0.2s ease; }
+.session-row:hover .session-actions { opacity: 1; }
+.icon-btn {
+  display: flex; align-items: center; justify-content: center;
+  width: 26px; height: 26px; background: transparent; border: none;
+  color: var(--text-muted); cursor: none; border-radius: 5px; transition: all 0.2s ease;
+}
+.icon-btn:hover { color: var(--accent); background: rgba(0, 229, 195, 0.1); }
+.icon-btn.danger:hover { color: #ef4444; background: rgba(239, 68, 68, 0.1); }
+.icon-btn svg { width: 14px; height: 14px; }
+.drawer-empty { padding: 24px; text-align: center; color: var(--text-muted); font-size: 13px; }
+.drawer-foot { padding: 12px 18px; border-top: 1px solid var(--border); }
+.drawer-export {
+  display: inline-flex; align-items: center; gap: 6px; width: 100%; justify-content: center;
+  padding: 9px; border: 1px solid var(--border); border-radius: 8px;
+  background: transparent; color: var(--text-secondary); font-size: 12px;
+  cursor: none; transition: all 0.25s ease;
+}
+.drawer-export:hover:not(:disabled) { border-color: var(--accent); color: var(--accent); }
+.drawer-export:disabled { opacity: 0.4; cursor: not-allowed; }
+.drawer-export svg { width: 14px; height: 14px; }
+
+.drawer-enter-active, .drawer-leave-active { transition: opacity 0.25s ease; }
+.drawer-enter-active .session-drawer, .drawer-leave-active .session-drawer { transition: transform 0.25s ease; }
+.drawer-enter-from, .drawer-leave-to { opacity: 0; }
+.drawer-enter-from .session-drawer, .drawer-leave-to .session-drawer { transform: translateX(-100%); }
+
+/* ===== Modal ===== */
+.modal-scrim {
+  position: fixed; inset: 0; z-index: 300;
+  background: rgba(0, 0, 0, 0.6); backdrop-filter: blur(4px);
+  display: flex; align-items: center; justify-content: center;
+}
+.modal-box {
+  background: rgba(10, 14, 26, 0.95); border: 1px solid var(--border);
+  border-radius: 12px; padding: 24px; max-width: 360px; width: 90%;
+}
+.modal-text { color: var(--text-primary); font-size: 14px; margin: 0 0 18px; }
+.modal-actions { display: flex; gap: 10px; justify-content: flex-end; }
+.modal-btn {
+  padding: 8px 16px; border-radius: 8px; font-size: 13px; cursor: none;
+  border: 1px solid var(--border); background: transparent; color: var(--text-secondary);
+  transition: all 0.2s ease;
+}
+.modal-btn.ghost:hover { color: var(--text-primary); }
+.modal-btn.danger { background: rgba(239, 68, 68, 0.15); border-color: rgba(239, 68, 68, 0.4); color: #ef4444; }
+.modal-btn.danger:hover { background: rgba(239, 68, 68, 0.25); }
+.fade-enter-active, .fade-leave-active { transition: opacity 0.2s ease; }
+.fade-enter-from, .fade-leave-to { opacity: 0; }
 
 /* ===== Messages ===== */
 .messages-area {
