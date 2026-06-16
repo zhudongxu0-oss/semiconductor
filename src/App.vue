@@ -327,8 +327,6 @@ import { marked } from 'marked'
 marked.setOptions({ gfm: true, breaks: true })
 import sessionStore from './sessionStore.js'
 
-let msgId = 0
-
 export default {
   data() {
     return {
@@ -383,10 +381,6 @@ export default {
     },
     sessions() {
       return sessionStore.state.sessions
-    },
-    canRegenerate() {
-      const m = this.messages
-      return m.length > 0 && m[m.length - 1].role === 'assistant'
     },
     lastAssistantIndex() {
       for (let i = this.messages.length - 1; i >= 0; i--) {
@@ -457,7 +451,10 @@ export default {
       this.sendMessage()
     },
     goHome() {
-      sessionStore.createSession()
+      const s = sessionStore.getActive()
+      if (!s || s.messages.length > 0) {
+        sessionStore.createSession()
+      }
       this.drawerOpen = false
     },
     async sendMessage() {
@@ -469,14 +466,14 @@ export default {
       if (s.messages.length === 0) {
         sessionStore.renameSession(s.id, sessionStore.makeTitle(question))
       }
-      sessionStore.appendMessage({ id: ++msgId, role: 'user', content: question })
+      sessionStore.appendMessage({ id: sessionStore.genId('m'), role: 'user', content: question })
 
       await this._runCompletion(question, this.deepThink)
     },
 
     // Shared by sendMessage (new question) and regenerate (re-run last question).
     async _runCompletion(question, useDeepThink) {
-      const aid = ++msgId
+      const aid = sessionStore.genId('m')
       sessionStore.appendMessage({
         id: aid,
         role: 'assistant',
@@ -599,7 +596,10 @@ export default {
       this.drawerOpen = false
     },
     startNewChat() {
-      sessionStore.createSession()
+      const s = sessionStore.getActive()
+      if (!s || s.messages.length > 0) {
+        sessionStore.createSession()
+      }
       this.drawerOpen = false
       this.inputMessage = ''
     },
