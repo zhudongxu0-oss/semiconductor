@@ -1504,6 +1504,7 @@ export default {
 }
 
 .message-bubble.assistant {
+  max-width: 100%;
   background: var(--bg-card);
   border: 1px solid var(--border);
   color: var(--text-primary);
@@ -1517,7 +1518,7 @@ export default {
 }
 
 .message-content-col {
-  max-width: 70%;
+  max-width: 80%;
   display: flex;
   flex-direction: column;
   gap: 8px;
