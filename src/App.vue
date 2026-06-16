@@ -75,7 +75,7 @@
 
       <div class="sidebar-list">
         <div
-          v-for="s in sessions"
+          v-for="s in visibleSessions"
           :key="s.id"
           :class="['session-row', { active: s.id === activeSession?.id }]"
           @click="editingId === s.id ? null : switchSession(s.id)"
@@ -103,7 +103,7 @@
             </button>
           </div>
         </div>
-        <div v-if="sessions.length === 0" class="drawer-empty">暂无会话</div>
+        <div v-if="visibleSessions.length === 0" class="drawer-empty">暂无会话</div>
       </div>
 
       <div class="sidebar-foot">
@@ -257,17 +257,19 @@
                 <div v-if="msg.role === 'assistant'" class="answer-content">
                   <span v-html="formatAnswer(msg.content)"></span>
                   <span v-if="msg.streaming" class="typing-cursor"></span>
-                  <div v-if="msg.stopped" class="stopped-chip">⏹ 已中断</div>
-                  <div v-if="!msg.streaming && msg.content" class="answer-actions">
-                    <button class="action-link" @click="copyAnswer(msg)">
-                      <span v-if="copiedMsgId === msg.id" class="copy-ok">✓ 已复制</span>
-                      <template v-else>复制</template>
-                    </button>
-                    <span v-if="i === lastAssistantIndex" class="action-sep">·</span>
-                    <button v-if="i === lastAssistantIndex" class="action-link" @click="regenerate">重新生成</button>
-                  </div>
                 </div>
                 <div v-else class="question-content">{{ msg.content }}</div>
+              </div>
+              <!-- Stopped marker: shown even if no answer content was produced (e.g. stopped mid-thinking) -->
+              <div v-if="msg.stopped" class="stopped-chip">⏹ 已中断</div>
+              <!-- Per-answer actions: copy (needs content) + regenerate (last assistant) -->
+              <div v-if="!msg.streaming && msg.role === 'assistant' && (msg.content || msg.stopped)" class="answer-actions">
+                <button v-if="msg.content" class="action-link" @click="copyAnswer(msg)">
+                  <span v-if="copiedMsgId === msg.id" class="copy-ok">✓ 已复制</span>
+                  <template v-else>复制</template>
+                </button>
+                <span v-if="msg.content && i === lastAssistantIndex" class="action-sep">·</span>
+                <button v-if="i === lastAssistantIndex" class="action-link" @click="regenerate">重新生成</button>
               </div>
               <!-- Sources -->
               <div v-if="msg.sources && msg.sources.length > 0" class="msg-sources">
@@ -397,6 +399,10 @@ export default {
     },
     sessions() {
       return sessionStore.state.sessions
+    },
+    visibleSessions() {
+      const activeId = this.activeSession && this.activeSession.id
+      return this.sessions.filter((s) => s.messages.length > 0 || s.id === activeId)
     },
     lastAssistantIndex() {
       for (let i = this.messages.length - 1; i >= 0; i--) {
@@ -863,7 +869,7 @@ export default {
 
 /* ===== Session Sidebar ===== */
 /* .mobile-only / .desktop-only helpers (overridden in media queries below) */
-.mobile-only { display: none; }
+.mobile-only { display: none !important; }
 
 .drawer-toggle {
   display: flex; align-items: center; justify-content: center;
@@ -1608,13 +1614,13 @@ export default {
 
 .answer-actions {
   display: flex; align-items: center; gap: 6px;
-  margin-top: 10px; opacity: 0.85; transition: opacity 0.2s ease;
+  margin-top: 10px; opacity: 0.9; transition: opacity 0.2s ease;
 }
-.message-bubble:hover .answer-actions { opacity: 1; }
+.message-row:hover .answer-actions { opacity: 1; }
 .action-link {
   background: none; border: none; padding: 0;
   font-family: var(--font-mono); font-size: 11px; letter-spacing: 0.05em;
-  color: var(--text-muted); cursor: none; transition: color 0.2s ease;
+  color: var(--text-secondary); cursor: none; transition: color 0.2s ease;
 }
 .action-link:hover { color: var(--accent); }
 .copy-ok { color: var(--accent); }
@@ -1939,6 +1945,7 @@ export default {
 }
 .stopped-chip {
   display: inline-flex;
+  align-self: flex-start;
   align-items: center;
   gap: 4px;
   margin-top: 8px;
