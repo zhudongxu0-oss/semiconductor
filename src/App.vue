@@ -236,17 +236,24 @@ import { marked } from 'marked'
 
 // gfm: **bold**, lists, tables; breaks: single \n → <br> (matches prior behavior)
 marked.setOptions({ gfm: true, breaks: true })
+import sessionStore from './sessionStore.js'
 
 let msgId = 0
 
 export default {
   data() {
     return {
-      messages: [],
       inputMessage: '',
       loading: false,
       deepThink: false,
       isScrolled: false,
+      // session-management UI state
+      drawerOpen: false,
+      editingId: null,
+      editingTitle: '',
+      copiedMsgId: null,
+      confirmDeleteId: null,
+      currentAbort: null,
       allQuestions: [
         // RTP异常处理
         'RTP设备报警怎么处理？',
@@ -278,7 +285,24 @@ export default {
       ]
     }
   },
+  computed: {
+    activeSession() {
+      return sessionStore.getActive()
+    },
+    messages() {
+      return this.activeSession ? this.activeSession.messages : []
+    },
+    sessions() {
+      return sessionStore.state.sessions
+    },
+    canRegenerate() {
+      const m = this.messages
+      return m.length > 0 && m[m.length - 1].role === 'assistant'
+    },
+  },
   mounted() {
+    sessionStore.load()
+    if (!sessionStore.getActive()) sessionStore.createSession()
     this.shuffleQuestions()
     window.addEventListener('scroll', this.handleScroll)
     window.addEventListener('mousemove', this.handleEyeFollow)
@@ -327,103 +351,111 @@ export default {
       this.sendMessage()
     },
     goHome() {
-      this.messages = []
-      this.inputMessage = ''
+      sessionStore.createSession()
+      this.drawerOpen = false
     },
     async sendMessage() {
       if (!this.inputMessage.trim() || this.loading) return
       const question = this.inputMessage.trim()
-      const useDeepThink = this.deepThink
-      this.messages.push({ id: ++msgId, role: 'user', content: question })
       this.inputMessage = ''
-      this.loading = true
-      this.$nextTick(() => this.scrollToBottom())
 
-      // Add streaming placeholder
-      const assistantId = ++msgId
-      this.messages.push({
-        id: assistantId,
+      const s = sessionStore.ensureActive()
+      if (s.messages.length === 0) {
+        sessionStore.renameSession(s.id, sessionStore.makeTitle(question))
+      }
+      sessionStore.appendMessage({ id: ++msgId, role: 'user', content: question })
+
+      await this._runCompletion(question, this.deepThink)
+    },
+
+    // Shared by sendMessage (new question) and regenerate (re-run last question).
+    async _runCompletion(question, useDeepThink) {
+      const aid = ++msgId
+      sessionStore.appendMessage({
+        id: aid,
         role: 'assistant',
         content: '',
         thinking: '',
         sources: [],
         streaming: true,
         isDeepThink: useDeepThink,
-        showThinking: true
+        showThinking: true,
       })
+      this.loading = true
+      this.currentAbort = new AbortController()
+      this.$nextTick(() => this.scrollToBottom())
 
       try {
-        const history = this.messages
-          .filter(m => m.id !== assistantId && m.role !== 'system')
-          .map(m => ({ role: m.role, content: m.content }))
+        const s = sessionStore.getActive()
+        const history = s.messages
+          .filter((m) => m.id !== aid && m.role !== 'system')
+          .map((m) => ({ role: m.role, content: m.content }))
 
         const response = await fetch('/api/chat', {
           method: 'POST',
           headers: { 'Content-Type': 'application/json' },
-          body: JSON.stringify({ question, history, deepThink: useDeepThink })
+          body: JSON.stringify({ question, history, deepThink: useDeepThink }),
+          signal: this.currentAbort.signal,
         })
 
         const reader = response.body.getReader()
         const decoder = new TextDecoder()
-        let sources = []
 
         while (true) {
           const { done, value } = await reader.read()
           if (done) break
 
           const text = decoder.decode(value)
-          const lines = text.split('\n').filter(l => l.startsWith('data: '))
+          const lines = text.split('\n').filter((l) => l.startsWith('data: '))
 
           for (const line of lines) {
             try {
               const data = JSON.parse(line.slice(6))
-              const msg = this.messages.find(m => m.id === assistantId)
 
               if (data.type === 'thinking') {
-                if (msg) {
-                  msg.thinking += data.content
-                  this.$nextTick(() => {
-                    // Auto-expand thinking when thinking content arrives
-                    if (msg.isDeepThink && !msg.showThinking) {
-                      msg.showThinking = true
-                    }
-                    // Scroll thinking body
-                    const thinkingBody = document.querySelector('.thinking-block.active .thinking-body')
-                    if (thinkingBody) {
-                      thinkingBody.scrollTop = thinkingBody.scrollHeight
-                    }
-                  })
-                }
-              } else if (data.type === 'chunk') {
-                if (msg) {
-                  msg.content += data.content
-                  if (this.loading) this.loading = false
-                  // Auto-collapse thinking when answer starts
-                  if (msg.isDeepThink && msg.thinking && msg.showThinking) {
-                    msg.showThinking = false
+                const cur = sessionStore.getActive().messages.find((m) => m.id === aid)
+                sessionStore.updateMessage(aid, { thinking: (cur.thinking || '') + data.content })
+                this.$nextTick(() => {
+                  const m = sessionStore.getActive().messages.find((x) => x.id === aid)
+                  if (m.isDeepThink && !m.showThinking) {
+                    sessionStore.updateMessage(aid, { showThinking: true })
                   }
-                  this.$nextTick(() => this.scrollToBottom())
+                  const tb = document.querySelector('.thinking-block.active .thinking-body')
+                  if (tb) tb.scrollTop = tb.scrollHeight
+                })
+              } else if (data.type === 'chunk') {
+                const cur = sessionStore.getActive().messages.find((m) => m.id === aid)
+                sessionStore.updateMessage(aid, { content: (cur.content || '') + data.content })
+                if (this.loading) this.loading = false
+                const m = sessionStore.getActive().messages.find((x) => x.id === aid)
+                if (m.isDeepThink && m.thinking && m.showThinking) {
+                  sessionStore.updateMessage(aid, { showThinking: false })
                 }
+                this.$nextTick(() => this.scrollToBottom())
               } else if (data.type === 'done') {
-                sources = data.sources || []
-                if (msg) {
-                  msg.sources = sources
-                  msg.streaming = false
-                }
+                sessionStore.updateMessage(aid, { streaming: false, sources: data.sources || [] })
+                sessionStore.saveNow()
               }
-            } catch (e) {}
+            } catch (e) {
+              // partial SSE line across chunks — ignore; next read retries
+            }
           }
         }
-      } catch (e) {
-        const msg = this.messages.find(m => m.id === assistantId)
-        if (msg) {
-          msg.content = '服务暂时不可用，请稍后重试。'
-          msg.streaming = false
+      } catch (err) {
+        const aborted = err && err.name === 'AbortError'
+        const m = sessionStore.getActive()?.messages.find((x) => x.id === aid)
+        if (aborted) {
+          sessionStore.updateMessage(aid, { streaming: false, stopped: true })
+        } else {
+          console.error('chat error:', err)
+          const note = '\n\n（AI服务暂时不可用，请稍后重试或重新生成。）'
+          sessionStore.updateMessage(aid, { streaming: false, content: (m?.content || '') + note })
         }
+        sessionStore.saveNow()
       } finally {
         this.loading = false
+        this.currentAbort = null
         this.$nextTick(() => this.scrollToBottom())
-        this.$refs.inputRef?.focus()
       }
     },
     scrollToBottom() {
