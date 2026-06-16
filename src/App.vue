@@ -47,6 +47,15 @@
     <!-- Main Content -->
     <main class="app-main">
       <div class="chat-panel">
+        <!-- Back to home (chat mode only) -->
+        <div v-if="messages.length > 0" class="chat-back-home">
+          <button @click="goHome" class="back-btn">
+            <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.5">
+              <path d="M2.25 12l8.954-8.955c.44-.439 1.152-.439 1.591 0L21.75 12M4.5 9.75v10.125c0 .621.504 1.125 1.125 1.125H9.75v-4.875c0-.621.504-1.125 1.125-1.125h2.25c.621 0 1.125.504 1.125 1.125V21h4.125c.621 0 1.125-.504 1.125-1.125V9.75M8.25 21h8.25"/>
+            </svg>
+            返回首页
+          </button>
+        </div>
         <!-- Messages -->
         <div class="messages-area" ref="messagesRef">
           <!-- Welcome -->
@@ -136,16 +145,6 @@
             </div>
           </div>
 
-          <!-- Back to home button -->
-          <div v-if="messages.length > 0" class="back-to-home">
-            <button @click="goHome" class="back-btn">
-              <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.5">
-                <path d="M2.25 12l8.954-8.955c.44-.439 1.152-.439 1.591 0L21.75 12M4.5 9.75v10.125c0 .621.504 1.125 1.125 1.125H9.75v-4.875c0-.621.504-1.125 1.125-1.125h2.25c.621 0 1.125.504 1.125 1.125V21h4.125c.621 0 1.125-.504 1.125-1.125V9.75M8.25 21h8.25"/>
-              </svg>
-              返回首页
-            </button>
-          </div>
-
           <!-- Chat Messages -->
           <div v-for="(msg, i) in messages" :key="msg.id" class="message-row" :class="msg.role">
             <div v-if="msg.role === 'assistant'" class="msg-avatar">
@@ -154,49 +153,52 @@
                 <circle cx="16" cy="16" r="4" fill="var(--accent)"/>
               </svg>
             </div>
-            <div class="message-bubble" :class="msg.role">
-              <div v-if="msg.role === 'assistant'" class="answer-content" v-html="formatAnswer(msg.content)"></div>
-              <div v-else class="question-content">{{ msg.content }}</div>
+            <div class="message-content-col">
+              <!-- Thinking process - unified block -->
+              <div v-if="msg.isDeepThink && (msg.thinking || (msg.streaming && !msg.content))" class="thinking-block" :class="{ active: msg.streaming && !msg.content }">
+                <div class="thinking-header" @click="msg.thinking && (msg.showThinking = !msg.showThinking)">
+                  <span class="thinking-spinner" v-if="msg.streaming && !msg.content"></span>
+                  <span class="thinking-icon" v-else>🧠</span>
+                  <span class="thinking-text">{{ msg.streaming && !msg.content ? '正在深度分析...' : '思考过程' }}</span>
+                  <span class="thinking-toggle" v-if="msg.thinking && !msg.streaming">{{ msg.showThinking ? '收起' : '展开' }}</span>
+                </div>
+                <div v-if="msg.showThinking && msg.thinking" class="thinking-body" v-html="formatAnswer(msg.thinking)"></div>
+              </div>
+              <!-- Answer - only show when there's content -->
+              <div v-if="msg.content || (!msg.isDeepThink && msg.streaming)" class="message-bubble" :class="[msg.role, { 'deep-think': msg.isDeepThink }]">
+                <div v-if="msg.role === 'assistant'" class="answer-content"><span v-html="formatAnswer(msg.content)"></span><span v-if="msg.streaming" class="typing-cursor"></span></div>
+                <div v-else class="question-content">{{ msg.content }}</div>
+              </div>
+              <!-- Sources -->
+              <div v-if="msg.sources && msg.sources.length > 0" class="msg-sources">
+                <span class="sources-label">📚 参考：</span>
+                <span v-for="src in msg.sources" :key="src.question" class="source-tag">{{ src.question }}</span>
+              </div>
             </div>
           </div>
 
-          <!-- Loading -->
-          <div v-if="loading" class="message-row assistant">
-            <div class="msg-avatar loading-avatar">
-              <svg viewBox="0 0 32 32" fill="none">
-                <rect x="6" y="6" width="20" height="20" rx="4" fill="rgba(0,229,195,0.15)" stroke="var(--accent)" stroke-width="1"/>
-                <circle cx="16" cy="16" r="4" fill="var(--accent)"/>
-              </svg>
-            </div>
-            <div class="message-bubble assistant loading-bubble">
-              <div class="thinking-content">
-                <div class="thinking-dots">
-                  <span></span><span></span><span></span>
-                </div>
-                <div class="thinking-text">
-                  <span class="thinking-label">思考中</span>
-                  <span class="thinking-detail">正在检索知识库并分析问题...</span>
-                </div>
-              </div>
-              <div class="loading-progress-bar">
-                <div class="loading-progress-fill"></div>
-              </div>
-            </div>
-          </div>
+          <!-- Chat Messages -->
         </div>
 
         <!-- Input Area -->
         <div class="input-area">
-          <div class="input-wrapper">
-            <div class="input-icon">
-              <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.5">
+          <div class="input-tools">
+            <button
+              @click="deepThink = !deepThink"
+              :class="['think-btn', { active: deepThink }]"
+              :disabled="loading"
+            >
+              <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.5" class="think-icon">
                 <path d="M9.813 15.904L9 18.75l-.813-2.846a4.5 4.5 0 00-3.09-3.09L2.25 12l2.846-.813a4.5 4.5 0 003.09-3.09L9 5.25l.813 2.846a4.5 4.5 0 003.09 3.09L15.75 12l-2.846.813a4.5 4.5 0 00-3.09 3.09zM18.259 8.715L18 9.75l-.259-1.035a3.375 3.375 0 00-2.455-2.456L14.25 6l1.036-.259a3.375 3.375 0 002.455-2.456L18 2.25l.259 1.035a3.375 3.375 0 002.455 2.456L21.75 6l-1.036.259a3.375 3.375 0 00-2.455 2.456zM16.894 20.567L16.5 21.75l-.394-1.183a2.25 2.25 0 00-1.423-1.423L13.5 18.75l1.183-.394a2.25 2.25 0 001.423-1.423l.394-1.183.394 1.183a2.25 2.25 0 001.423 1.423l1.183.394-1.183.394a2.25 2.25 0 00-1.423 1.423z"/>
               </svg>
-            </div>
+              <span>深度思考</span>
+            </button>
+          </div>
+          <div class="input-wrapper">
             <input
               v-model="inputMessage"
               type="text"
-              placeholder="输入你的工艺问题..."
+              :placeholder="deepThink ? '深度思考模式，适合复杂问题...' : '输入你的工艺问题...'"
               :disabled="loading"
               @keydown.enter="sendMessage"
               class="chat-input"
@@ -215,7 +217,7 @@
           <div class="input-hint">
             <span class="hint-key">Enter</span> 发送
             <span class="hint-dot">·</span>
-            <span class="hint-tag">知识库 + AI 增强</span>
+            <span class="hint-tag">{{ deepThink ? 'GLM-4-Plus 深度分析' : 'GLM-4-Flash 快速回答' }}</span>
           </div>
         </div>
       </div>
@@ -230,6 +232,11 @@
 </template>
 
 <script>
+import { marked } from 'marked'
+
+// gfm: **bold**, lists, tables; breaks: single \n → <br> (matches prior behavior)
+marked.setOptions({ gfm: true, breaks: true })
+
 let msgId = 0
 
 export default {
@@ -238,6 +245,7 @@ export default {
       messages: [],
       inputMessage: '',
       loading: false,
+      deepThink: false,
       isScrolled: false,
       allQuestions: [
         // RTP异常处理
@@ -311,9 +319,8 @@ export default {
       pupilRight.style.transform = `translate(${tx}px, ${ty}px)`
     },
     formatAnswer(text) {
-      return text
-        .replace(/\*\*(.*?)\*\*/g, '<strong>$1</strong>')
-        .replace(/\n/g, '<br>')
+      if (!text) return ''
+      return marked.parse(text)
     },
     askQuestion(q) {
       this.inputMessage = q
@@ -326,30 +333,93 @@ export default {
     async sendMessage() {
       if (!this.inputMessage.trim() || this.loading) return
       const question = this.inputMessage.trim()
+      const useDeepThink = this.deepThink
       this.messages.push({ id: ++msgId, role: 'user', content: question })
       this.inputMessage = ''
       this.loading = true
       this.$nextTick(() => this.scrollToBottom())
 
+      // Add streaming placeholder
+      const assistantId = ++msgId
+      this.messages.push({
+        id: assistantId,
+        role: 'assistant',
+        content: '',
+        thinking: '',
+        sources: [],
+        streaming: true,
+        isDeepThink: useDeepThink,
+        showThinking: true
+      })
+
       try {
-        const res = await fetch('/api/chat', {
+        const history = this.messages
+          .filter(m => m.id !== assistantId && m.role !== 'system')
+          .map(m => ({ role: m.role, content: m.content }))
+
+        const response = await fetch('/api/chat', {
           method: 'POST',
           headers: { 'Content-Type': 'application/json' },
-          body: JSON.stringify({ question })
+          body: JSON.stringify({ question, history, deepThink: useDeepThink })
         })
-        const data = await res.json()
-        this.messages.push({
-          id: ++msgId,
-          role: 'assistant',
-          content: data.answer || data.error || '回答生成失败',
-          sources: data.sources || []
-        })
+
+        const reader = response.body.getReader()
+        const decoder = new TextDecoder()
+        let sources = []
+
+        while (true) {
+          const { done, value } = await reader.read()
+          if (done) break
+
+          const text = decoder.decode(value)
+          const lines = text.split('\n').filter(l => l.startsWith('data: '))
+
+          for (const line of lines) {
+            try {
+              const data = JSON.parse(line.slice(6))
+              const msg = this.messages.find(m => m.id === assistantId)
+
+              if (data.type === 'thinking') {
+                if (msg) {
+                  msg.thinking += data.content
+                  this.$nextTick(() => {
+                    // Auto-expand thinking when thinking content arrives
+                    if (msg.isDeepThink && !msg.showThinking) {
+                      msg.showThinking = true
+                    }
+                    // Scroll thinking body
+                    const thinkingBody = document.querySelector('.thinking-block.active .thinking-body')
+                    if (thinkingBody) {
+                      thinkingBody.scrollTop = thinkingBody.scrollHeight
+                    }
+                  })
+                }
+              } else if (data.type === 'chunk') {
+                if (msg) {
+                  msg.content += data.content
+                  if (this.loading) this.loading = false
+                  // Auto-collapse thinking when answer starts
+                  if (msg.isDeepThink && msg.thinking && msg.showThinking) {
+                    msg.showThinking = false
+                  }
+                  this.$nextTick(() => this.scrollToBottom())
+                }
+              } else if (data.type === 'done') {
+                sources = data.sources || []
+                if (msg) {
+                  msg.sources = sources
+                  msg.streaming = false
+                }
+              }
+            } catch (e) {}
+          }
+        }
       } catch (e) {
-        this.messages.push({
-          id: ++msgId,
-          role: 'assistant',
-          content: '服务暂时不可用，请稍后重试。'
-        })
+        const msg = this.messages.find(m => m.id === assistantId)
+        if (msg) {
+          msg.content = '服务暂时不可用，请稍后重试。'
+          msg.streaming = false
+        }
       } finally {
         this.loading = false
         this.$nextTick(() => this.scrollToBottom())
@@ -902,11 +972,12 @@ export default {
   letter-spacing: 0.05em;
 }
 
-/* ===== Back to Home ===== */
-.back-to-home {
+/* ===== Back to Home (in chat-panel flow) ===== */
+.chat-back-home {
   display: flex;
   justify-content: center;
-  padding: 12px 0 20px;
+  margin: 0 0 4px;
+  flex-shrink: 0;
 }
 
 .back-btn {
@@ -986,6 +1057,98 @@ export default {
   backdrop-filter: blur(12px);
 }
 
+.message-bubble.deep-think {
+  border-color: rgba(168, 85, 247, 0.3);
+  background: linear-gradient(135deg, rgba(168, 85, 247, 0.08), var(--bg-card));
+}
+
+.message-content-col {
+  max-width: 70%;
+  display: flex;
+  flex-direction: column;
+  gap: 8px;
+}
+
+.thinking-block {
+  background: rgba(168, 85, 247, 0.08);
+  border: 1px solid rgba(168, 85, 247, 0.2);
+  border-radius: var(--radius);
+  overflow: hidden;
+  max-width: 100%;
+}
+
+.thinking-header {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  padding: 10px 14px;
+  cursor: pointer;
+  font-size: 12px;
+  color: var(--text-muted);
+}
+
+.thinking-block.active .thinking-header {
+  color: #a855f7;
+}
+
+.thinking-icon {
+  font-size: 14px;
+}
+
+.thinking-text {
+  flex: 1;
+}
+
+.thinking-toggle {
+  opacity: 0.5;
+  font-size: 11px;
+}
+
+.thinking-toggle:hover {
+  opacity: 1;
+}
+
+.thinking-spinner {
+  width: 14px;
+  height: 14px;
+  border: 2px solid rgba(168, 85, 247, 0.2);
+  border-top-color: #a855f7;
+  border-radius: 50%;
+  animation: spin 0.8s linear infinite;
+}
+
+@keyframes spin {
+  to { transform: rotate(360deg); }
+}
+
+.thinking-body {
+  padding: 0 14px 12px;
+  font-size: 12px;
+  color: var(--text-secondary);
+  line-height: 1.6;
+  max-height: 150px;
+  overflow-y: auto;
+  scroll-behavior: smooth;
+}
+
+.msg-sources {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 4px;
+  font-size: 11px;
+}
+
+.sources-label {
+  color: var(--text-muted);
+}
+
+.source-tag {
+  background: var(--accent-dim);
+  color: var(--accent);
+  padding: 2px 8px;
+  border-radius: 4px;
+}
+
 .question-content {
   white-space: pre-wrap;
 }
@@ -993,6 +1156,107 @@ export default {
 .answer-content :deep(strong) {
   color: var(--accent);
   font-weight: 600;
+}
+
+/* Rendered markdown inside chat answers / thinking blocks */
+.answer-content :deep(p) {
+  margin: 6px 0;
+}
+.answer-content :deep(p:first-child) {
+  margin-top: 0;
+}
+.answer-content :deep(p:last-child) {
+  margin-bottom: 0;
+}
+.answer-content :deep(h1),
+.answer-content :deep(h2),
+.answer-content :deep(h3),
+.answer-content :deep(h4),
+.answer-content :deep(h5),
+.answer-content :deep(h6) {
+  margin: 12px 0 6px;
+  font-weight: 700;
+  color: var(--text-primary);
+  line-height: 1.4;
+}
+.answer-content :deep(h1) { font-size: 18px; }
+.answer-content :deep(h2) { font-size: 16px; }
+.answer-content :deep(h3) { font-size: 15px; color: var(--accent); }
+.answer-content :deep(h4),
+.answer-content :deep(h5),
+.answer-content :deep(h6) { font-size: 14px; color: var(--accent); }
+.answer-content :deep(ul),
+.answer-content :deep(ol) {
+  margin: 6px 0;
+  padding-left: 20px;
+}
+.answer-content :deep(li) {
+  margin: 3px 0;
+}
+.answer-content :deep(code) {
+  font-family: var(--font-mono);
+  font-size: 12px;
+  background: rgba(0, 229, 195, 0.1);
+  padding: 1px 5px;
+  border-radius: 4px;
+}
+.answer-content :deep(pre) {
+  margin: 8px 0;
+  padding: 10px 12px;
+  background: rgba(0, 0, 0, 0.3);
+  border: 1px solid var(--border);
+  border-radius: var(--radius);
+  overflow-x: auto;
+}
+.answer-content :deep(pre code) {
+  background: none;
+  padding: 0;
+}
+.answer-content :deep(table) {
+  width: 100%;
+  border-collapse: collapse;
+  margin: 8px 0;
+  font-size: 13px;
+}
+.answer-content :deep(th),
+.answer-content :deep(td) {
+  border: 1px solid var(--border);
+  padding: 6px 10px;
+  text-align: left;
+}
+.answer-content :deep(th) {
+  color: var(--accent);
+}
+.answer-content :deep(blockquote) {
+  margin: 6px 0;
+  padding-left: 12px;
+  border-left: 2px solid var(--accent);
+  color: var(--text-secondary);
+}
+
+/* Thinking block uses smaller type */
+.thinking-body :deep(p) { margin: 4px 0; }
+.thinking-body :deep(h1),
+.thinking-body :deep(h2),
+.thinking-body :deep(h3),
+.thinking-body :deep(h4) { margin: 8px 0 4px; font-weight: 600; }
+.thinking-body :deep(ul),
+.thinking-body :deep(ol) { margin: 4px 0; padding-left: 18px; }
+.thinking-body :deep(li) { margin: 2px 0; }
+
+.typing-cursor {
+  display: inline-block;
+  width: 2px;
+  height: 1em;
+  background: var(--accent);
+  margin-left: 2px;
+  animation: blink 0.8s ease-in-out infinite;
+  vertical-align: text-bottom;
+}
+
+@keyframes blink {
+  0%, 100% { opacity: 1; }
+  50% { opacity: 0; }
 }
 
 /* Loading */
@@ -1040,7 +1304,7 @@ export default {
   30% { transform: translateY(-8px); opacity: 1; }
 }
 
-.thinking-text {
+.thinking-label {
   display: flex;
   flex-direction: column;
   gap: 2px;
@@ -1083,6 +1347,43 @@ export default {
 .input-area {
   padding-top: 16px;
   flex-shrink: 0;
+}
+
+.input-tools {
+  display: flex;
+  gap: 8px;
+  margin-bottom: 8px;
+}
+
+.think-btn {
+  display: flex;
+  align-items: center;
+  gap: 6px;
+  padding: 6px 12px;
+  background: transparent;
+  border: 1px solid var(--border);
+  border-radius: 20px;
+  color: var(--text-muted);
+  font-size: 12px;
+  font-family: var(--font-body);
+  cursor: none;
+  transition: all 0.3s ease;
+}
+
+.think-btn:hover {
+  border-color: #a855f7;
+  color: #a855f7;
+}
+
+.think-btn.active {
+  background: rgba(168, 85, 247, 0.15);
+  border-color: #a855f7;
+  color: #a855f7;
+}
+
+.think-icon {
+  width: 14px;
+  height: 14px;
 }
 
 .input-wrapper {
