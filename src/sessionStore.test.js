@@ -119,3 +119,47 @@ test('makeTitle truncates to 15 chars and falls back', () => {
   // surrogate-pair safe: each emoji is one code point, not split mid-pair
   assert.equal(store.makeTitle('😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀extra'), '😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀')
 })
+
+test('appendMessage ensures a session and pushes', () => {
+  fresh()
+  const m = { id: 1, role: 'user', content: '问' }
+  store.appendMessage(m)
+  const active = store.getActive()
+  assert.ok(active)
+  assert.equal(active.messages.length, 1)
+  assert.equal(active.messages[0].content, '问')
+})
+
+test('appendMessage refreshes updatedAt', () => {
+  fresh()
+  store.setClock(() => 1000)
+  store.createSession()
+  store.setClock(() => 5000)
+  store.appendMessage({ id: 1, role: 'user', content: 'x' })
+  assert.equal(store.getActive().updatedAt, 5000)
+})
+
+test('updateMessage patches the target message in active session', () => {
+  fresh()
+  store.createSession()
+  store.appendMessage({ id: 7, role: 'assistant', content: '' })
+  store.updateMessage(7, { content: 'hello', streaming: false })
+  assert.equal(store.getActive().messages[0].content, 'hello')
+  assert.equal(store.getActive().messages[0].streaming, false)
+})
+
+test('updateMessage ignores unknown id', () => {
+  fresh()
+  store.createSession()
+  assert.doesNotThrow(() => store.updateMessage(999, { content: 'x' }))
+})
+
+test('removeMessage drops the target message', () => {
+  fresh()
+  store.createSession()
+  store.appendMessage({ id: 1, role: 'user', content: 'q' })
+  store.appendMessage({ id: 2, role: 'assistant', content: 'a' })
+  store.removeMessage(2)
+  assert.equal(store.getActive().messages.length, 1)
+  assert.equal(store.getActive().messages[0].id, 1)
+})

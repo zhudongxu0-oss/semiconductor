@@ -116,6 +116,34 @@ function renameSession(id, title) {
   }
 }
 
+function appendMessage(msg) {
+  const s = ensureActive()
+  s.messages.push(msg)
+  s.updatedAt = clock()
+  save()                       // debounced — streaming updates batch into one write
+  return s
+}
+
+function updateMessage(msgId, patch) {
+  const s = getActive()
+  if (!s) return
+  const m = s.messages.find((x) => x.id === msgId)
+  if (m) {
+    Object.assign(m, patch)
+    save()
+  }
+}
+
+function removeMessage(msgId) {
+  const s = getActive()
+  if (!s) return
+  const idx = s.messages.findIndex((x) => x.id === msgId)
+  if (idx !== -1) {
+    s.messages.splice(idx, 1)
+    save()
+  }
+}
+
 // ---- test hooks ----
 function setStorageAdapter(adapter) { storage = adapter }
 function setClock(fn) { clock = fn }
@@ -132,5 +160,6 @@ export default {
   load, save, saveNow,
   genId, makeTitle,
   createSession, getActive, setActive, ensureActive, deleteSession, renameSession,
+  appendMessage, updateMessage, removeMessage,
   setStorageAdapter, setClock, reset, getAdapterSnapshot, _rawSet,
 }
