@@ -239,7 +239,19 @@
               </div>
               <!-- Answer - only show when there's content -->
               <div v-if="msg.content || (!msg.isDeepThink && msg.streaming)" class="message-bubble" :class="[msg.role, { 'deep-think': msg.isDeepThink }]">
-                <div v-if="msg.role === 'assistant'" class="answer-content"><span v-html="formatAnswer(msg.content)"></span><span v-if="msg.streaming" class="typing-cursor"></span></div>
+                <div v-if="msg.role === 'assistant'" class="answer-content">
+                  <span v-html="formatAnswer(msg.content)"></span>
+                  <span v-if="msg.streaming" class="typing-cursor"></span>
+                  <div v-if="msg.stopped" class="stopped-chip">⏹ 已中断</div>
+                  <div v-if="!msg.streaming && msg.content" class="answer-actions">
+                    <button class="action-link" @click="copyAnswer(msg)">
+                      <span v-if="copiedMsgId === msg.id" class="copy-ok">✓ 已复制</span>
+                      <template v-else>复制</template>
+                    </button>
+                    <span class="action-sep">·</span>
+                    <button class="action-link" @click="regenerate">重新生成</button>
+                  </div>
+                </div>
                 <div v-else class="question-content">{{ msg.content }}</div>
               </div>
               <!-- Sources -->
@@ -1521,6 +1533,20 @@ export default {
   color: var(--accent);
   font-weight: 600;
 }
+
+.answer-actions {
+  display: flex; align-items: center; gap: 6px;
+  margin-top: 10px; opacity: 0.55; transition: opacity 0.2s ease;
+}
+.message-bubble:hover .answer-actions { opacity: 1; }
+.action-link {
+  background: none; border: none; padding: 0;
+  font-family: var(--font-mono); font-size: 11px; letter-spacing: 0.05em;
+  color: var(--text-muted); cursor: none; transition: color 0.2s ease;
+}
+.action-link:hover { color: var(--accent); }
+.copy-ok { color: var(--accent); }
+.action-sep { color: var(--text-muted); font-size: 11px; }
 
 /* Rendered markdown inside chat answers / thinking blocks */
 .answer-content :deep(p) {
