@@ -474,6 +474,21 @@ export default {
     },
     stopGeneration() {
       if (this.currentAbort) this.currentAbort.abort()
+    },
+    regenerate() {
+      if (this.loading) return
+      const m = this.messages
+      // find last assistant message and the user question preceding it
+      let aiIdx = -1
+      for (let i = m.length - 1; i >= 0; i--) {
+        if (m[i].role === 'assistant') { aiIdx = i; break }
+      }
+      if (aiIdx === -1) return
+      const ai = m[aiIdx]
+      const userQ = m[aiIdx - 1] && m[aiIdx - 1].role === 'user' ? m[aiIdx - 1].content : null
+      if (!userQ) return
+      sessionStore.removeMessage(ai.id)
+      this._runCompletion(userQ, ai.isDeepThink ?? this.deepThink)
     }
   }
 }
