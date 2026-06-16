@@ -3,7 +3,7 @@
     <!-- Header -->
     <header class="app-header" :class="{ scrolled: isScrolled }">
       <div class="header-left">
-        <button class="drawer-toggle" @click="toggleDrawer" title="会话记录">
+        <button class="drawer-toggle mobile-only" @click="toggleSidebar" title="会话记录">
           <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.6">
             <path d="M3.75 6.75h16.5M3.75 12h16.5M3.75 17.25h16.5"/>
           </svg>
@@ -49,60 +49,75 @@
       </div>
     </header>
 
-    <!-- Session drawer -->
-    <transition name="drawer">
-      <div v-if="drawerOpen" class="drawer-scrim" @click="closeDrawer">
-        <aside class="session-drawer" @click.stop>
-          <div class="drawer-head">
-            <span class="drawer-title">会话记录</span>
-            <button class="drawer-new" @click="startNewChat">
-              <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M12 4.5v15m7.5-7.5h-15"/></svg>
-              新对话
-            </button>
-          </div>
-
-          <div class="drawer-list">
-            <div
-              v-for="s in sessions"
-              :key="s.id"
-              :class="['session-row', { active: s.id === activeSession?.id }]"
-              @click="editingId === s.id ? null : switchSession(s.id)"
-            >
-              <span class="session-node"></span>
-              <div class="session-main">
-                <input
-                  v-if="editingId === s.id"
-                  v-model="editingTitle"
-                  class="session-rename-input"
-                  @keyup.enter="commitRename"
-                  @keyup.esc="cancelRename"
-                  @blur="commitRename"
-                  ref="renameInput"
-                />
-                <span v-else class="session-name">{{ s.title }}</span>
-                <span class="session-time">{{ formatRelativeTime(s.updatedAt) }}</span>
-              </div>
-              <div class="session-actions" v-if="editingId !== s.id">
-                <button class="icon-btn" title="重命名" @click.stop="startRename(s)">
-                  <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.5"><path d="M16.86 4.49l2.65 2.65M3 21l.7-3.5 11.7-11.7 2.8 2.8L6.5 20.3 3 21z"/></svg>
-                </button>
-                <button class="icon-btn danger" title="删除" @click.stop="requestDelete(s.id)">
-                  <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.5"><path d="M6 7h12M9 7V4h6v3m-7 0l1 13h6l1-13"/></svg>
-                </button>
-              </div>
-            </div>
-            <div v-if="sessions.length === 0" class="drawer-empty">暂无会话</div>
-          </div>
-
-          <div class="drawer-foot">
-            <button class="drawer-export" @click="exportSession" :disabled="!messages.length">
-              <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.5"><path d="M12 3v12m0 0l-4-4m4 4l4-4M5 21h14"/></svg>
-              导出当前会话
-            </button>
-          </div>
-        </aside>
-      </div>
+    <!-- Sidebar scrim: mobile overlay only -->
+    <transition name="fade">
+      <div v-if="sidebarOpen && isMobileViewport" class="sidebar-scrim" @click="closeSidebar"></div>
     </transition>
+
+    <!-- Session sidebar: persistent on desktop, overlay on mobile -->
+    <aside class="sidebar" :class="{ open: sidebarOpen }">
+      <div class="sidebar-head">
+        <span class="sidebar-title">会话记录</span>
+        <div class="sidebar-head-actions">
+          <button class="sidebar-icon-btn desktop-only" @click="closeSidebar" title="收起侧栏">
+            <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8"><path d="M15 6l-6 6 6 6"/></svg>
+          </button>
+          <button class="sidebar-icon-btn mobile-only" @click="closeSidebar" title="关闭">
+            <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8"><path d="M6 6l12 12M18 6L6 18"/></svg>
+          </button>
+        </div>
+      </div>
+
+      <button class="sidebar-new" @click="startNewChat">
+        <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M12 4.5v15m7.5-7.5h-15"/></svg>
+        新对话
+      </button>
+
+      <div class="sidebar-list">
+        <div
+          v-for="s in sessions"
+          :key="s.id"
+          :class="['session-row', { active: s.id === activeSession?.id }]"
+          @click="editingId === s.id ? null : switchSession(s.id)"
+        >
+          <span class="session-node"></span>
+          <div class="session-main">
+            <input
+              v-if="editingId === s.id"
+              v-model="editingTitle"
+              class="session-rename-input"
+              @keyup.enter="commitRename"
+              @keyup.esc="cancelRename"
+              @blur="commitRename"
+              ref="renameInput"
+            />
+            <span v-else class="session-name">{{ s.title }}</span>
+            <span class="session-time">{{ formatRelativeTime(s.updatedAt) }}</span>
+          </div>
+          <div class="session-actions" v-if="editingId !== s.id">
+            <button class="icon-btn" title="重命名" @click.stop="startRename(s)">
+              <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.5"><path d="M16.86 4.49l2.65 2.65M3 21l.7-3.5 11.7-11.7 2.8 2.8L6.5 20.3 3 21z"/></svg>
+            </button>
+            <button class="icon-btn danger" title="删除" @click.stop="requestDelete(s.id)">
+              <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.5"><path d="M6 7h12M9 7V4h6v3m-7 0l1 13h6l1-13"/></svg>
+            </button>
+          </div>
+        </div>
+        <div v-if="sessions.length === 0" class="drawer-empty">暂无会话</div>
+      </div>
+
+      <div class="sidebar-foot">
+        <button class="sidebar-export" @click="exportSession" :disabled="!messages.length">
+          <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.5"><path d="M12 3v12m0 0l-4-4m4 4l4-4M5 21h14"/></svg>
+          导出当前会话
+        </button>
+      </div>
+    </aside>
+
+    <!-- Floating reopen button (desktop only, when collapsed) -->
+    <button v-if="!sidebarOpen" class="sidebar-expand desktop-only" @click="openSidebar" title="展开会话记录">
+      <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8"><path d="M9 6l6 6-6 6"/></svg>
+    </button>
 
     <!-- Delete confirm -->
     <transition name="fade">
@@ -118,7 +133,7 @@
     </transition>
 
     <!-- Main Content -->
-    <main class="app-main">
+    <main class="app-main" :class="{ 'with-sidebar': sidebarOpen && !isMobileViewport }">
       <div class="chat-panel">
         <!-- Back to home (chat mode only) -->
         <div v-if="messages.length > 0" class="chat-back-home">
@@ -233,7 +248,7 @@
                   <span class="thinking-spinner" v-if="msg.streaming && !msg.content"></span>
                   <span class="thinking-icon" v-else>🧠</span>
                   <span class="thinking-text">{{ msg.streaming && !msg.content ? '正在深度分析...' : '思考过程' }}</span>
-                  <span class="thinking-toggle" v-if="msg.thinking && !msg.streaming">{{ msg.showThinking ? '收起' : '展开' }}</span>
+                  <span class="thinking-toggle" v-if="msg.thinking">{{ msg.showThinking ? '收起' : '展开' }}</span>
                 </div>
                 <div v-if="msg.showThinking && msg.thinking" class="thinking-body" v-html="formatAnswer(msg.thinking)"></div>
               </div>
@@ -335,7 +350,8 @@ export default {
       deepThink: false,
       isScrolled: false,
       // session-management UI state
-      drawerOpen: false,
+      sidebarOpen: typeof window !== 'undefined' && window.innerWidth > 768,
+      isMobileViewport: false,
       editingId: null,
       editingTitle: '',
       copiedMsgId: null,
@@ -393,10 +409,13 @@ export default {
     sessionStore.load()
     if (!sessionStore.getActive()) sessionStore.createSession()
     this.shuffleQuestions()
+    this.isMobileViewport = window.innerWidth <= 768
+    window.addEventListener('resize', this.handleResize)
     window.addEventListener('scroll', this.handleScroll)
     window.addEventListener('mousemove', this.handleEyeFollow)
   },
   beforeUnmount() {
+    window.removeEventListener('resize', this.handleResize)
     window.removeEventListener('scroll', this.handleScroll)
     window.removeEventListener('mousemove', this.handleEyeFollow)
   },
@@ -455,7 +474,7 @@ export default {
       if (!s || s.messages.length > 0) {
         sessionStore.createSession()
       }
-      this.drawerOpen = false
+      if (this.isMobileViewport) this.sidebarOpen = false
     },
     async sendMessage() {
       if (!this.inputMessage.trim() || this.loading) return
@@ -524,21 +543,18 @@ export default {
                 const cur = sessionStore.getActive().messages.find((m) => m.id === aid)
                 sessionStore.updateMessage(aid, { thinking: (cur.thinking || '') + data.content })
                 this.$nextTick(() => {
-                  const m = sessionStore.getActive().messages.find((x) => x.id === aid)
-                  if (m.isDeepThink && !m.showThinking) {
-                    sessionStore.updateMessage(aid, { showThinking: true })
-                  }
+                  // keep the live reasoning scrolled to the bottom while the panel is open
                   const tb = document.querySelector('.thinking-block.active .thinking-body')
                   if (tb) tb.scrollTop = tb.scrollHeight
                 })
               } else if (data.type === 'chunk') {
                 const cur = sessionStore.getActive().messages.find((m) => m.id === aid)
-                sessionStore.updateMessage(aid, { content: (cur.content || '') + data.content })
-                if (this.loading) this.loading = false
-                const m = sessionStore.getActive().messages.find((x) => x.id === aid)
-                if (m.isDeepThink && m.thinking && m.showThinking) {
-                  sessionStore.updateMessage(aid, { showThinking: false })
+                // Auto-collapse the thinking panel ONCE when the answer starts;
+                // after that, leave it to the user's manual toggle.
+                if (!cur.content && cur.isDeepThink && cur.thinking && !cur.autoCollapsedThinking) {
+                  sessionStore.updateMessage(aid, { showThinking: false, autoCollapsedThinking: true })
                 }
+                sessionStore.updateMessage(aid, { content: (cur.content || '') + data.content })
                 this.$nextTick(() => this.scrollToBottom())
               } else if (data.type === 'done') {
                 sessionStore.updateMessage(aid, { streaming: false, sources: data.sources || [] })
@@ -589,23 +605,32 @@ export default {
       sessionStore.removeMessage(ai.id)
       this._runCompletion(userQ, ai.isDeepThink ?? this.deepThink)
     },
-    toggleDrawer() {
-      this.drawerOpen = !this.drawerOpen
+    toggleSidebar() {
+      this.sidebarOpen = !this.sidebarOpen
     },
-    closeDrawer() {
-      this.drawerOpen = false
+    closeSidebar() {
+      this.sidebarOpen = false
+    },
+    openSidebar() {
+      this.sidebarOpen = true
+    },
+    isMobile() {
+      return this.isMobileViewport
+    },
+    handleResize() {
+      this.isMobileViewport = window.innerWidth <= 768
     },
     startNewChat() {
       const s = sessionStore.getActive()
       if (!s || s.messages.length > 0) {
         sessionStore.createSession()
       }
-      this.drawerOpen = false
       this.inputMessage = ''
+      if (this.isMobileViewport) this.sidebarOpen = false
     },
     switchSession(id) {
       sessionStore.setActive(id)
-      this.drawerOpen = false
+      if (this.isMobileViewport) this.sidebarOpen = false
       this.$nextTick(() => this.scrollToBottom())
     },
     startRename(s) {
@@ -836,7 +861,10 @@ export default {
   height: calc(100vh - 112px);
 }
 
-/* ===== Session Drawer ===== */
+/* ===== Session Sidebar ===== */
+/* .mobile-only / .desktop-only helpers (overridden in media queries below) */
+.mobile-only { display: none; }
+
 .drawer-toggle {
   display: flex; align-items: center; justify-content: center;
   width: 38px; height: 38px;
@@ -847,37 +875,54 @@ export default {
 .drawer-toggle:hover { border-color: var(--accent); color: var(--accent); background: var(--accent-dim); }
 .drawer-toggle svg { width: 18px; height: 18px; }
 
-.drawer-scrim {
-  position: fixed; inset: 0; z-index: 200;
+.sidebar-scrim {
+  position: fixed; inset: 0; z-index: 190;
   background: rgba(0, 0, 0, 0.5); backdrop-filter: blur(2px);
 }
-.session-drawer {
-  position: absolute; top: 0; left: 0; bottom: 0;
+
+.sidebar {
+  position: fixed; top: 64px; bottom: 0; left: 0;
   width: 300px; max-width: 85vw;
-  background: rgba(3, 7, 16, 0.85); backdrop-filter: blur(20px);
+  background: rgba(3, 7, 16, 0.88); backdrop-filter: blur(20px);
   border-right: 1px solid var(--border);
   display: flex; flex-direction: column;
   background-image: repeating-linear-gradient(0deg, rgba(0,229,195,0.03) 0px, rgba(0,229,195,0.03) 1px, transparent 1px, transparent 24px);
+  transform: translateX(-100%);
+  transition: transform 0.25s ease;
+  z-index: 200;
 }
-.drawer-head {
+.sidebar.open { transform: translateX(0); }
+
+.sidebar-head {
   display: flex; align-items: center; justify-content: space-between;
   padding: 18px 18px 12px;
   border-bottom: 1px solid rgba(0, 229, 195, 0.15);
 }
-.drawer-title {
+.sidebar-title {
   font-family: var(--font-display); font-size: 13px; font-weight: 600;
   letter-spacing: 0.12em; text-transform: uppercase; color: var(--text-primary);
 }
-.drawer-new {
-  display: inline-flex; align-items: center; gap: 5px;
-  padding: 6px 12px; border: 1px solid var(--accent); border-radius: 16px;
+.sidebar-head-actions { display: flex; gap: 6px; }
+.sidebar-icon-btn {
+  display: flex; align-items: center; justify-content: center;
+  width: 28px; height: 28px; background: transparent; border: 1px solid var(--border);
+  border-radius: 8px; color: var(--text-muted);
+  cursor: none; transition: all 0.2s ease;
+}
+.sidebar-icon-btn:hover { color: var(--accent); border-color: var(--accent); }
+.sidebar-icon-btn svg { width: 15px; height: 15px; }
+
+.sidebar-new {
+  display: inline-flex; align-items: center; justify-content: center; gap: 6px;
+  margin: 12px 14px 4px; padding: 9px 12px;
+  border: 1px solid var(--accent); border-radius: 10px;
   background: transparent; color: var(--accent); font-size: 12px;
   cursor: none; transition: all 0.25s ease;
 }
-.drawer-new:hover { background: var(--accent-dim); }
-.drawer-new svg { width: 13px; height: 13px; }
+.sidebar-new:hover { background: var(--accent-dim); }
+.sidebar-new svg { width: 14px; height: 14px; }
 
-.drawer-list { flex: 1; overflow-y: auto; padding: 8px; }
+.sidebar-list { flex: 1; overflow-y: auto; padding: 8px; }
 .session-row {
   display: flex; align-items: center; gap: 10px;
   padding: 10px 10px; border-radius: 8px; cursor: none;
@@ -920,21 +965,42 @@ export default {
 .icon-btn.danger:hover { color: #ef4444; background: rgba(239, 68, 68, 0.1); }
 .icon-btn svg { width: 14px; height: 14px; }
 .drawer-empty { padding: 24px; text-align: center; color: var(--text-muted); font-size: 13px; }
-.drawer-foot { padding: 12px 18px; border-top: 1px solid var(--border); }
-.drawer-export {
+.sidebar-foot { padding: 12px 14px; border-top: 1px solid var(--border); }
+.sidebar-export {
   display: inline-flex; align-items: center; gap: 6px; width: 100%; justify-content: center;
   padding: 9px; border: 1px solid var(--border); border-radius: 8px;
   background: transparent; color: var(--text-secondary); font-size: 12px;
   cursor: none; transition: all 0.25s ease;
 }
-.drawer-export:hover:not(:disabled) { border-color: var(--accent); color: var(--accent); }
-.drawer-export:disabled { opacity: 0.4; cursor: not-allowed; }
-.drawer-export svg { width: 14px; height: 14px; }
+.sidebar-export:hover:not(:disabled) { border-color: var(--accent); color: var(--accent); }
+.sidebar-export:disabled { opacity: 0.4; cursor: not-allowed; }
+.sidebar-export svg { width: 14px; height: 14px; }
 
-.drawer-enter-active, .drawer-leave-active { transition: opacity 0.25s ease; }
-.drawer-enter-active .session-drawer, .drawer-leave-active .session-drawer { transition: transform 0.25s ease; }
-.drawer-enter-from, .drawer-leave-to { opacity: 0; }
-.drawer-enter-from .session-drawer, .drawer-leave-to .session-drawer { transform: translateX(-100%); }
+/* Floating reopen button — desktop only, shown when the sidebar is collapsed */
+.sidebar-expand {
+  position: fixed; top: 78px; left: 0; z-index: 95;
+  width: 22px; height: 46px;
+  display: flex; align-items: center; justify-content: center;
+  background: rgba(3, 7, 16, 0.9); border: 1px solid var(--border); border-left: none;
+  border-radius: 0 10px 10px 0; color: var(--text-secondary);
+  cursor: none; transition: all 0.25s ease; backdrop-filter: blur(12px);
+}
+.sidebar-expand:hover { color: var(--accent); border-color: var(--accent); background: var(--accent-dim); }
+.sidebar-expand svg { width: 16px; height: 16px; }
+
+/* Desktop ≥769px: persistent sidebar sits beside (not over) the content */
+@media (min-width: 769px) {
+  .sidebar { z-index: 90; }
+  .app-main { transition: margin-left 0.25s ease; }
+  .app-main.with-sidebar { margin-left: 300px; }
+}
+
+/* Mobile ≤768px: sidebar becomes an overlay; show the header toggle */
+@media (max-width: 768px) {
+  .desktop-only { display: none !important; }
+  .mobile-only { display: flex !important; }
+  .sidebar { top: 56px; }
+}
 
 /* ===== Modal ===== */
 .modal-scrim {
@@ -1542,7 +1608,7 @@ export default {
 
 .answer-actions {
   display: flex; align-items: center; gap: 6px;
-  margin-top: 10px; opacity: 0.55; transition: opacity 0.2s ease;
+  margin-top: 10px; opacity: 0.85; transition: opacity 0.2s ease;
 }
 .message-bubble:hover .answer-actions { opacity: 1; }
 .action-link {
