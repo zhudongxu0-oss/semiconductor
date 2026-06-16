@@ -205,12 +205,16 @@
               ref="inputRef"
             />
             <button
-              @click="sendMessage"
-              :disabled="!inputMessage.trim() || loading"
-              class="send-btn"
+              @click="loading ? stopGeneration() : sendMessage()"
+              :disabled="!loading && (!inputMessage.trim())"
+              :class="['send-btn', { stopping: loading }]"
+              :title="loading ? '停止生成' : '发送'"
             >
-              <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
+              <svg v-if="!loading" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
                 <path d="M6 12L3.269 3.126A59.768 59.768 0 0121.485 12 59.77 59.77 0 013.27 20.876L5.999 12zm0 0h7.5"/>
+              </svg>
+              <svg v-else class="stop-glyph" viewBox="0 0 24 24" fill="currentColor">
+                <rect x="6" y="6" width="12" height="12" rx="2"/>
               </svg>
             </button>
           </div>
@@ -467,6 +471,9 @@ export default {
     scrollToBottom() {
       const el = this.$refs.messagesRef
       if (el) el.scrollTop = el.scrollHeight
+    },
+    stopGeneration() {
+      if (this.currentAbort) this.currentAbort.abort()
     }
   }
 }
@@ -1498,6 +1505,34 @@ export default {
   cursor: not-allowed;
   transform: none;
   box-shadow: none;
+}
+
+.send-btn.stopping {
+  background: linear-gradient(135deg, rgba(245, 158, 11, 0.9), rgba(239, 68, 68, 0.85));
+  animation: stopPulse 1.1s ease-in-out infinite;
+}
+.send-btn .stop-glyph {
+  width: 14px;
+  height: 14px;
+  color: #0a0e1a;
+}
+@keyframes stopPulse {
+  0%, 100% { box-shadow: 0 0 0 0 rgba(245, 158, 11, 0.45); }
+  50% { box-shadow: 0 0 0 8px rgba(245, 158, 11, 0); }
+}
+.stopped-chip {
+  display: inline-flex;
+  align-items: center;
+  gap: 4px;
+  margin-top: 8px;
+  padding: 2px 8px;
+  font-family: var(--font-mono);
+  font-size: 10px;
+  letter-spacing: 0.08em;
+  color: #f59e0b;
+  background: rgba(245, 158, 11, 0.1);
+  border: 1px solid rgba(245, 158, 11, 0.3);
+  border-radius: 4px;
 }
 
 .input-hint {
